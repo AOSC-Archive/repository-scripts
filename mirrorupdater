@@ -1,0 +1,79 @@
+#!/bin/bash
+
+WorkingDir=/var/cache/repository
+LogDir=/var/log/repository
+MirrorDir=/mirror
+ArmelBSPs="sunxi rpi2"
+codename="Duang-Duang"
+
+if [[ ! -e "$WorkingDir" ]]; then
+    mkdir "$WorkingDir"
+fi
+
+if [[ ! -e "$LogDir" ]]; then
+    mkdir "$LogDir"
+fi
+
+sign_repo() {
+    cat > Release << EOF
+Origin: AOSC
+Label: AOSC OS ($i)
+Suite: os-$i
+Codename: $codename
+Date: `date -u -R`
+Valid-Until: `date -u -R --date='fortnight'`
+Architectures: $i
+Description: AOSC OS Repository ($i)
+EOF
+
+    echo SHA256: >> Release
+    printf ' ' >> ./Release
+    echo `sha256sum ./Packages | cut -f 1 -d ' ' ` `du -b Packages` >> ./Release
+    printf ' ' >> ./Release
+    echo `sha256sum ./Packages.gz | cut -f 1 -d ' ' ` `du -b Packages.gz` >> ./Release
+    printf ' ' >> ./Release
+    echo `sha256sum ./Packages.xz | cut -f 1 -d ' ' ` `du -b Packages.xz` >> ./Release
+    rm -f ./Release.gpg
+
+    gpg -a -b -abz3 --digest-algo SHA512 -o ./Release.gpg --sign ./Release
+}
+
+# General architectural generation.
+for i in amd64 armel arm64 mipsel noarch powerpc ppc64; do
+    LoopTimestamp="$(date +%s)"
+    cd "$MirrorDir"/os-"$i"/os3-dpkg
+    mkdir -p "$WorkingDir"/"$i"
+    echo Update started at $(date -u) > "$LogDir"/"$i"-scan-"$LoopTimestamp".log
+    dpkg-scanpackages -m . > "$WorkingDir"/"$i"/Packages 2>> "$LogDir"/"$i"-scan-"$LoopTimestamp".log
+    echo Update finished at $(date -u) >> "$LogDir"/"$i"-scan-"$LoopTimestamp".log
+    cd "$WorkingDir"/"$i"
+    rm -f *.gz *.xz
+    gzip -9c Packages > Packages.gz
+    xz -9c Packages > Packages.xz
+    cp Packages* "$MirrorDir"/os-"$i"/os3-dpkg/
+    cd "$MirrorDir"/os-"$i"/os3-dpkg
+    sign_repo
+    cd "$WorkingDir"
+done
+
+# ARM BSP Generation.
+for i in $ArmelBSPs; do
+    LoopTimestamp="$(date +%s)"
+    cd "$MirrorDir"/os-armel/"$i"/os3-dpkg
+    mkdir -p "$WorkingDir"/"$i"
+    echo Update started at $(date -u) > "$LogDir"/"$i"-scan-"$LoopTimestamp".log
+    dpkg-scanpackages -m . > "$WorkingDir"/"$i"/Packages 2>> "$LogDir"/"$i"-scan-"$LoopTimestamp".log
+    echo Update finished at $(date -u) >> "$LogDir"/"$i"-scan-"$LoopTimestamp".log
+    cd "$WorkingDir"/"$i"
+    rm -f *.gz *.xz
+    gzip -9c Packages > Packages.gz
+    xz -9c Packages > Packages.xz
+    cp Packages* "$MirrorDir"/os-armel/"$i"/os3-dpkg/
+    cp Packages* "$MirrorDir"/os-armel/"$i"/os3-dpkg/
+    cd "$MirrorDir"/os-armel/"$i"/os3-dpkg
+    sign_repo
+    cd "$WorkingDir"
+done
+
+# Timestamp.
+date +%s > "$MirrorDir"/last_update
