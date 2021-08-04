@@ -1,0 +1,9 @@
+[Unit]
+Description=Scanning Deb Repository
+After=network-online.target
+
+[Service]
+Type=simple
+User=repo
+KillSignal=SIGINT
+ExecStart=/home/repo/update_mirror.sh
